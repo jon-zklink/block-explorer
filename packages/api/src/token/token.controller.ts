@@ -54,6 +54,7 @@ export class TokenController {
       {
         minLiquidity,
         networkKey: key,
+        justBridge: false,
       },
       {
         filterOptions: { minLiquidity },
@@ -92,6 +93,69 @@ export class TokenController {
       }),
     };
   }
+
+  @Get("/bridgeTokens")
+  @ApiListPageOkResponse(TokenDto, { description: "Successfully returned bridge token list" })
+  @ApiBadRequestResponse({ description: "Paging query params are not valid or out of range" })
+  @ApiQuery({
+    name: "minLiquidity",
+    type: "integer",
+    description: "Min liquidity filter",
+    example: 100000,
+    required: false,
+  })
+  public async getBridgeTokens(
+      @Query() pagingOptions: PagingOptionsDto,
+      @Query("minLiquidity", new ParseLimitedIntPipe({ min: 0, isOptional: true })) minLiquidity?: number,
+      @Query("key") key?: string
+  ): Promise<Pagination<TokenDto>> {
+    if (key === "") {
+      key = undefined;
+    }
+    const res = await this.tokenService.findAll(
+        {
+          minLiquidity,
+          networkKey: key,
+          justBridge: true,
+        },
+        {
+          filterOptions: { minLiquidity },
+          ...pagingOptions,
+          route: entityName,
+        },
+    );
+    return {
+      ...res,
+      items: res.items.map((token) => {
+        let price_t = 6;
+        if (token.usdPrice <= 0) {
+          price_t = 0;
+        }
+        if (token.usdPrice < 1) {
+          let priceNum = token.usdPrice;
+          let num = 0;
+          while(priceNum<1 && priceNum > 0){
+            priceNum *= 10;
+            num++;
+          }
+          price_t = price_t + num;
+        } else {
+          if (token.usdPrice * 10 ** price_t >= Number.MAX_VALUE) {
+            price_t = 0;
+          }
+        }
+        return {
+          ...token,
+          tvl: token.totalSupply
+              .mul(Math.floor((token.usdPrice ?? 0) * 10 ** price_t))
+              .div(10 ** price_t)
+              .div(BigNumber.from(10).pow(token.decimals))
+              .toString(),
+        };
+      }),
+    };
+  }
+
   @Post("/deposit-highest-tvl-record")
   @ApiOperation({ summary: 'Get deposit tx highest TVL record', description: 'Only based on the address, check if there is any deposit transaction for the user where the deposit token value is at least $20. If such a condition is met, return true. The token price is updated every hour.'})
   @ApiBody({ 

@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, FindOptionsSelect, MoreThanOrEqual, Brackets } from "typeorm";
+import {Repository, FindOptionsSelect, MoreThanOrEqual, Brackets} from "typeorm";
 import { Pagination } from "nestjs-typeorm-paginate";
 import { IPaginationOptions } from "../common/types";
 import { paginate } from "../common/utils";
@@ -22,6 +22,7 @@ const cache = new LRUCache(options);
 export interface FilterTokensOptions {
   minLiquidity?: number;
   networkKey?: string;
+  justBridge?: boolean;
 }
 
 const TVL_TOKEN: TokenTvl = {
@@ -70,7 +71,7 @@ export class TokenService {
   }
 
   public async findAll(
-    { minLiquidity, networkKey }: FilterTokensOptions,
+    { minLiquidity, networkKey, justBridge }: FilterTokensOptions,
     paginationOptions: IPaginationOptions
   ): Promise<Pagination<Token>> {
     const queryBuilder = this.tokenRepository.createQueryBuilder("token");
@@ -85,6 +86,11 @@ export class TokenService {
       queryBuilder.andWhere({
         liquidity: MoreThanOrEqual(minLiquidity),
       });
+    }
+    if (justBridge){
+      queryBuilder.andWhere(
+          new Brackets((qb) => qb.where("token.l1Address IS NOT NULL"))
+      )
     }
     queryBuilder.orderBy("token.liquidity", "DESC", "NULLS LAST");
     queryBuilder.addOrderBy("token.blockNumber", "DESC");
